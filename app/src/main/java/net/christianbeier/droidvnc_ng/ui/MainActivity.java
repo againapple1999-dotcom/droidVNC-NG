@@ -145,6 +145,53 @@ public class MainActivity extends AppCompatActivity {
         }
         setContentView(R.layout.activity_main);
 
+Button shareApps = findViewById(R.id.share_app_list);
+
+shareApps.setOnClickListener(view -> {
+    Intent query = new Intent(Intent.ACTION_MAIN);
+    query.addCategory(Intent.CATEGORY_LAUNCHER);
+
+    PackageManager pm = getPackageManager();
+
+    List<android.content.pm.ResolveInfo> results =
+        pm.queryIntentActivities(query, 0);
+
+    java.util.TreeMap<String, String> apps =
+        new java.util.TreeMap<>();
+
+    for (android.content.pm.ResolveInfo app : results) {
+        if (app.activityInfo != null) {
+            apps.put(
+                app.activityInfo.packageName,
+                app.loadLabel(pm).toString()
+            );
+        }
+    }
+
+    StringBuilder report = new StringBuilder();
+    report.append("Launchable Android Apps\n\n");
+
+    for (java.util.Map.Entry<String, String> app
+            : apps.entrySet()) {
+        report.append(app.getValue())
+              .append(" | ")
+              .append(app.getKey())
+              .append("\n");
+    }
+
+    Intent send = new Intent(Intent.ACTION_SEND);
+    send.setType("text/plain");
+    send.putExtra(
+        Intent.EXTRA_TEXT,
+        report.toString()
+    );
+
+    startActivity(
+        Intent.createChooser(send, "Share App List")
+    );
+});
+
+
         final SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
         mDefaults = new Defaults(this);
 
