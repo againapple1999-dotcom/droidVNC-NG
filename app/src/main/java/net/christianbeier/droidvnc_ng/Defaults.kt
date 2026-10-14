@@ -81,7 +81,7 @@ class Defaults {
         private set
 
     @EncodeDefault
-    var startOnBoot = true
+    var startOnBoot = false
         private set
 
     @EncodeDefault

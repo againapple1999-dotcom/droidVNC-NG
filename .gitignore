@@ -12,3 +12,9 @@
 /captures
 .externalNativeBuild
 .cxx
+
+# Python cache and local backups
+__pycache__/
+*.pyc
+app/google-services.backup.json
+app/src/main/res/layout/activity_main.xml.before_fix

@@ -22,6 +22,20 @@
             android:layout_marginBottom="24dp"/>
 
         <EditText
+            android:id="@+id/server_url_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Cloudflare Server URL (https://...)"
+            android:inputType="textUri"
+            android:singleLine="true"/>
+
+        <Button
+            android:id="@+id/btn_save_server"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Save Server URL"/>
+
+        <EditText
             android:id="@+id/email_input"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -73,6 +87,18 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Check Connection Request"/>
+
+        <Button
+            android:id="@+id/btn_end_request"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="End Connection Request"/>
+
+        <Button
+            android:id="@+id/btn_start_remote_session"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Start approved remote session" />
 
         <TextView
             android:id="@+id/login_status"

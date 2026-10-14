@@ -16,7 +16,7 @@ import net.christianbeier.droidvnc_ng.R;
 public class LoginActivity extends AppCompatActivity {
 
     private FirebaseAuth auth;
-    private EditText emailInput, passwordInput;
+    private EditText serverInput, emailInput, passwordInput;
     private TextView status;
     private Button loginBtn, createBtn, resetBtn, signOutBtn;
 
@@ -27,6 +27,9 @@ public class LoginActivity extends AppCompatActivity {
 
         auth = FirebaseAuth.getInstance();
 
+        serverInput = findViewById(R.id.server_url_input);
+        serverInput.setText(getSharedPreferences("remote_assistance", MODE_PRIVATE)
+            .getString("server_url", ""));
         emailInput = findViewById(R.id.email_input);
         passwordInput = findViewById(R.id.password_input);
         status = findViewById(R.id.login_status);
@@ -36,6 +39,17 @@ public class LoginActivity extends AppCompatActivity {
         resetBtn = findViewById(R.id.btn_reset_password);
         signOutBtn = findViewById(R.id.btn_sign_out);
 
+        findViewById(R.id.btn_save_server).setOnClickListener(v -> {
+            if (saveServerUrl()) {
+                FirebaseUser signedIn = auth.getCurrentUser();
+                if (signedIn != null && signedIn.isEmailVerified()) {
+                    // Update Firestore only after this phone's user explicitly saves the URL.
+                    registerDevice();
+                } else {
+                    status.setText("Server URL saved. Sign in with your account.");
+                }
+            }
+        });
         createBtn.setOnClickListener(v -> createAccount());
         loginBtn.setOnClickListener(v -> signIn());
         resetBtn.setOnClickListener(v -> resetPassword());
@@ -44,8 +58,41 @@ public class LoginActivity extends AppCompatActivity {
             .setOnClickListener(v -> checkConnectionRequest());
         findViewById(R.id.btn_register_device)
             .setOnClickListener(v -> registerDevice());
+        findViewById(R.id.btn_end_request)
+            .setOnClickListener(v -> endRequest());
+        findViewById(R.id.btn_start_remote_session)
+            .setOnClickListener(v -> startRemoteSession());
 
         updateStatus();
+    }
+
+    // Cloudflare URL is configuration only, not permission to access the phone.
+    // Never put passwords, Firebase tokens, or TURN credentials in this preference.
+    private boolean saveServerUrl() {
+        String raw = serverInput.getText().toString().trim();
+        try {
+            java.net.URI uri = new java.net.URI(raw);
+            String host = uri.getHost();
+            if (!"https".equalsIgnoreCase(uri.getScheme())
+                || host == null || host.isEmpty() || !host.contains(".")
+                || uri.getRawUserInfo() != null
+                || uri.getRawQuery() != null || uri.getRawFragment() != null
+                || uri.getPort() != -1
+                || (uri.getRawPath() != null
+                    && !uri.getRawPath().isEmpty()
+                    && !"/".equals(uri.getRawPath()))) {
+                status.setText("Use an HTTPS server root URL only");
+                return false;
+            }
+            String normalized = "https://" + host.toLowerCase(java.util.Locale.ROOT);
+            getSharedPreferences("remote_assistance", MODE_PRIVATE)
+                .edit().putString("server_url", normalized).apply();
+            serverInput.setText(normalized);
+            return true;
+        } catch (java.net.URISyntaxException e) {
+            status.setText("Invalid Cloudflare server URL");
+            return false;
+        }
     }
 
     private String email() {
@@ -87,6 +134,7 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     private void createAccount() {
+        if (!saveServerUrl()) return;
         if (!validEmail() || !validPassword()) return;
 
         setBusy(true);
@@ -134,6 +182,7 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     private void signIn() {
+        if (!saveServerUrl()) return;
         if (!validEmail() || !validPassword()) return;
 
         setBusy(true);
@@ -163,6 +212,9 @@ public class LoginActivity extends AppCompatActivity {
             setBusy(false);
             passwordInput.setText("");
             updateStatus();
+            // Same-account discovery: enroll this phone following a verified sign-in.
+            // This is NOT approval for an incoming remote-control session.
+            registerDevice();
         });
     }
 
@@ -187,6 +239,35 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     private void signOut() {
+        stopService(new android.content.Intent(this, VncBridgeService.class));
+        // Signing out must never leave a screen-sharing VNC service running locally.
+        // Server-side revocation for future Internet relays must ALSO be enforced by
+        // the relay itself (this Firestore update is best-effort if offline).
+        FirebaseUser user = auth.getCurrentUser();
+        String deviceId = getSharedPreferences("remote_assistance", MODE_PRIVATE)
+            .getString("device_id", null);
+        if (user != null && deviceId != null) {
+            com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                .collection("users").document(user.getUid())
+                .collection("devices").document(deviceId)
+                .update("remoteRequest.status", "ended",
+                    "remoteRequest.approvalSignature", "");
+        }
+        try {
+            android.content.SharedPreferences prefs =
+                androidx.preference.PreferenceManager.getDefaultSharedPreferences(this);
+            net.christianbeier.droidvnc_ng.Defaults defaults =
+                new net.christianbeier.droidvnc_ng.Defaults(this);
+            android.content.Intent stop = new android.content.Intent(
+                this, net.christianbeier.droidvnc_ng.MainService.class);
+            stop.setAction(net.christianbeier.droidvnc_ng.MainService.ACTION_STOP);
+            stop.putExtra(net.christianbeier.droidvnc_ng.MainService.EXTRA_ACCESS_KEY,
+                prefs.getString(net.christianbeier.droidvnc_ng.Constants.PREFS_KEY_SETTINGS_ACCESS_KEY,
+                    defaults.getAccessKey()));
+            androidx.core.content.ContextCompat.startForegroundService(this, stop);
+        } catch (RuntimeException error) {
+            android.util.Log.w("RemoteAuth", "VNC stop request failed", error);
+        }
         auth.signOut();
         passwordInput.setText("");
         updateStatus();
@@ -194,6 +275,7 @@ public class LoginActivity extends AppCompatActivity {
 
 
     private void registerDevice() {
+        if (!saveServerUrl()) return;
         FirebaseUser user = auth.getCurrentUser();
 
         if (user == null || !user.isEmailVerified()) {
@@ -215,9 +297,16 @@ public class LoginActivity extends AppCompatActivity {
         data.put("name",
             android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL);
         data.put("platform", "android");
+        data.put("serverUrl", prefs.getString("server_url", ""));
         data.put("status", "registered");
         data.put("updatedAt",
             com.google.firebase.firestore.FieldValue.serverTimestamp());
+        try {
+            data.put("approvalPublicKey", DeviceApprovalCrypto.enrollmentPublicKey(deviceId));
+        } catch (Exception e) {
+            status.setText("Device key setup failed: " + e.getClass().getSimpleName());
+            return;
+        }
 
         status.setText("Registering device...");
 
@@ -226,7 +315,7 @@ public class LoginActivity extends AppCompatActivity {
             .document(user.getUid())
             .collection("devices")
             .document(deviceId)
-            .set(data)
+            .set(data, com.google.firebase.firestore.SetOptions.merge())
             .addOnSuccessListener(v ->
                 status.setText("Device registered successfully")
             )
@@ -280,6 +369,15 @@ public class LoginActivity extends AppCompatActivity {
                     return;
                 }
 
+                String localServer = getSharedPreferences(
+                    "remote_assistance", MODE_PRIVATE
+                ).getString("server_url", "");
+                String requestServer = doc.getString("remoteRequest.serverUrl");
+                if (localServer.isEmpty() || !localServer.equals(requestServer)) {
+                    status.setText("Server URL mismatch. Check Kali and phone settings.");
+                    return;
+                }
+
                 String requestId =
                     doc.getString("remoteRequest.id");
 
@@ -327,7 +425,14 @@ public class LoginActivity extends AppCompatActivity {
             return;
         }
 
-        status.setText("Sending decision...");
+        String deviceId = getSharedPreferences("remote_assistance", MODE_PRIVATE)
+            .getString("device_id", null);
+        if (deviceId == null) {
+            status.setText("Register this device first");
+            return;
+        }
+        // Device enrollment public key must be published by Register This Device.
+        status.setText("Signing local decision...");
 
         com.google.firebase.firestore.FirebaseFirestore
             .getInstance()
@@ -349,9 +454,19 @@ public class LoginActivity extends AppCompatActivity {
                     );
                 }
 
-                transaction.update(
-                    ref, "remoteRequest.status", decision
-                );
+                try {
+                    String signature = DeviceApprovalCrypto.sign(
+                        user.getUid(), deviceId, requestId, decision,
+                        expiry.toDate().getTime());
+                    transaction.update(ref,
+                        "remoteRequest.status", decision,
+                        "remoteRequest.approvalSignature", signature,
+                        "remoteRequest.approvalDeviceId", deviceId,
+                        "remoteRequest.decidedAt",
+                        com.google.firebase.firestore.FieldValue.serverTimestamp());
+                } catch (Exception error) {
+                    throw new IllegalStateException("Device approval signature failed", error);
+                }
                 return null;
             })
             .addOnSuccessListener(result ->
@@ -362,6 +477,95 @@ public class LoginActivity extends AppCompatActivity {
                     "Decision failed: " + e.getMessage()
                 )
             );
+    }
+
+    // The person holding the phone must explicitly start a visible relay session.
+    // Firestore status is not sufficient: the AndroidKeyStore signature was
+    // generated locally at approval and this request must still be unexpired.
+    private void startRemoteSession() {
+        FirebaseUser user = auth.getCurrentUser();
+        String deviceId = getSharedPreferences("remote_assistance", MODE_PRIVATE)
+            .getString("device_id", null);
+        String serverUrl = getSharedPreferences("remote_assistance", MODE_PRIVATE)
+            .getString("server_url", "");
+        if (user == null || !user.isEmailVerified() || deviceId == null || serverUrl.isEmpty()) {
+            status.setText("Sign in, save server URL and register this phone first");
+            return;
+        }
+        String vncPassword = androidx.preference.PreferenceManager
+            .getDefaultSharedPreferences(this).getString(
+                net.christianbeier.droidvnc_ng.Constants.PREFS_KEY_SETTINGS_PASSWORD,
+                new net.christianbeier.droidvnc_ng.Defaults(this).getPassword());
+        if (vncPassword == null || vncPassword.trim().length() < 8) {
+            status.setText("Set a VNC password of at least 8 characters first");
+            return;
+        }
+        String iface = androidx.preference.PreferenceManager
+            .getDefaultSharedPreferences(this).getString(
+                net.christianbeier.droidvnc_ng.Constants.PREFS_KEY_SETTINGS_INTERFACE, "");
+        if (iface == null || !iface.equals("lo")) {
+            status.setText("Set VNC interface to loopback (lo) in the main screen first");
+            return;
+        }
+        status.setText("Checking current approval...");
+        com.google.firebase.firestore.FirebaseFirestore.getInstance()
+            .collection("users").document(user.getUid())
+            .collection("devices").document(deviceId)
+            .get(com.google.firebase.firestore.Source.SERVER)
+            .addOnSuccessListener(doc -> {
+                String id = doc.getString("remoteRequest.id");
+                String state = doc.getString("remoteRequest.status");
+                String approvedBy = doc.getString("remoteRequest.approvalDeviceId");
+                String signature = doc.getString("remoteRequest.approvalSignature");
+                String requestedServer = doc.getString("remoteRequest.serverUrl");
+                com.google.firebase.Timestamp expiry = doc.getTimestamp("remoteRequest.expiresAt");
+                if (id == null || !"approved".equals(state) ||
+                    !deviceId.equals(approvedBy) || signature == null || signature.isEmpty() ||
+                    !serverUrl.equals(requestedServer) || expiry == null ||
+                    expiry.toDate().getTime() <= System.currentTimeMillis()) {
+                    status.setText("No currently approved remote session. Ask Kali to request again.");
+                    return;
+                }
+                new androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Start visible remote screen session?")
+                    .setMessage("Only the VNC server you start yourself is shared. " +
+                        "Android may ask for screen-capture permission. " +
+                        "A foreground notification will provide Disconnect. " +
+                        "Start the VNC server first from the main app screen.")
+                    .setNegativeButton("CANCEL", (d, w) -> {})
+                    .setPositiveButton("START SESSION", (d, w) -> {
+                        android.content.Intent intent = new android.content.Intent(
+                            this, VncBridgeService.class).setAction(VncBridgeService.ACTION_START);
+                        intent.putExtra(VncBridgeService.EXTRA_DEVICE_ID, deviceId);
+                        intent.putExtra(VncBridgeService.EXTRA_REQUEST_ID, id);
+                        intent.putExtra(VncBridgeService.EXTRA_EXPIRES_MS,
+                            expiry.toDate().getTime());
+                        androidx.core.content.ContextCompat.startForegroundService(this, intent);
+                        status.setText("Remote bridge requested. Disconnect via notification or Sign Out.");
+                    }).show();
+            }).addOnFailureListener(e ->
+                status.setText("Approval check failed: " + e.getClass().getSimpleName()));
+    }
+
+    private void endRequest() {
+        stopService(new android.content.Intent(this, VncBridgeService.class));
+        FirebaseUser user = auth.getCurrentUser();
+        String deviceId = getSharedPreferences("remote_assistance", MODE_PRIVATE)
+            .getString("device_id", null);
+        if (user == null || deviceId == null) {
+            status.setText("Not signed in or not registered");
+            return;
+        }
+        com.google.firebase.firestore.FirebaseFirestore.getInstance()
+            .collection("users").document(user.getUid())
+            .collection("devices").document(deviceId)
+            .update("remoteRequest.status", "ended",
+                "remoteRequest.approvalSignature", "")
+            .addOnSuccessListener(v -> status.setText("Request ended on this phone"))
+            .addOnFailureListener(e ->
+                status.setText("Could not end request: " + e.getMessage()));
+        // This marks signaling as ended. It does not start/stop the VNC server;
+        // use the VNC service's visible Stop/Disconnect controls separately.
     }
 
     private void updateStatus() {

@@ -208,6 +208,21 @@ shareApps.setOnClickListener(view -> {
         mButtonToggle = findViewById(R.id.toggle);
         mButtonToggle.setOnClickListener(view -> {
 
+            // Never expose an unauthenticated VNC listener, even on a local network.
+            // Firestore sign-in does NOT authenticate native VNC connections.
+            if (!mIsMainServiceRunning &&
+                    prefs.getString(Constants.PREFS_KEY_SETTINGS_PASSWORD,
+                        mDefaults.getPassword()).trim().length() < 8) {
+                new AlertDialog.Builder(MainActivity.this)
+                    .setTitle("VNC password required")
+                    .setMessage("Set a VNC password of at least 8 non-space characters before starting screen sharing. " +
+                        "Firebase login alone does not secure port 5900. " +
+                        "Do not expose VNC directly to the public Internet.")
+                    .setPositiveButton("OK", null)
+                    .show();
+                return;
+            }
+
             Intent intent = new Intent(MainActivity.this, MainService.class);
             intent.putExtra(MainService.EXTRA_INTERFACE, prefs.getString(Constants.PREFS_KEY_SETTINGS_INTERFACE, ""));
             intent.putExtra(MainService.EXTRA_PORT, prefs.getInt(Constants.PREFS_KEY_SETTINGS_PORT, mDefaults.getPort()));

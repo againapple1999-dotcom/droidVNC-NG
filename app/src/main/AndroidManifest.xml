@@ -94,6 +94,11 @@
                 android:resource="@xml/input_service_config"/>
         </service>
 
+        <service
+            android:name=".ui.VncBridgeService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
         <activity
             android:name=".ui.LoginActivity"
             android:exported="false" />
