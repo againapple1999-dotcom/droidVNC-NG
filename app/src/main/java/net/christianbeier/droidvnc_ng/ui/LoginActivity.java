@@ -90,7 +90,15 @@ public class LoginActivity extends AppCompatActivity {
 
                 @Override
                 public void onError(@NonNull GetCredentialException e) {
-                    loginStatus.setText("Sign-in cancelled or failed");
+                    loginStatus.setText(
+                        "Google Sign-In Error: " +
+                        e.getClass().getSimpleName()
+                    );
+                    android.util.Log.e(
+                        "RemoteAuth",
+                        "Credential request failed: " + e.getType(),
+                        e
+                    );
                     signInButton.setEnabled(true);
                 }
             }
