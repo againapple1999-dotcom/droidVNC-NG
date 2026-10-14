@@ -94,6 +94,10 @@
                 android:resource="@xml/input_service_config"/>
         </service>
 
+        <activity
+            android:name=".ui.LoginActivity"
+            android:exported="false" />
+
         <activity android:name=".ui.MainActivity"
             android:label="@string/main_activity_title"
             android:launchMode="singleTask"

@@ -145,6 +145,16 @@ public class MainActivity extends AppCompatActivity {
         }
         setContentView(R.layout.activity_main);
 
+        Button openLogin = findViewById(R.id.btn_open_login);
+        openLogin.setOnClickListener(v -> {
+            Intent intent = new Intent(
+                MainActivity.this,
+                LoginActivity.class
+            );
+            startActivity(intent);
+        });
+
+
 Button shareApps = findViewById(R.id.share_app_list);
 
 shareApps.setOnClickListener(view -> {
