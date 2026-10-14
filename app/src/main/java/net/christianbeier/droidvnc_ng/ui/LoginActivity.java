@@ -40,6 +40,8 @@ public class LoginActivity extends AppCompatActivity {
         loginBtn.setOnClickListener(v -> signIn());
         resetBtn.setOnClickListener(v -> resetPassword());
         signOutBtn.setOnClickListener(v -> signOut());
+        findViewById(R.id.btn_check_request)
+            .setOnClickListener(v -> checkConnectionRequest());
         findViewById(R.id.btn_register_device)
             .setOnClickListener(v -> registerDevice());
 
@@ -230,6 +232,64 @@ public class LoginActivity extends AppCompatActivity {
             )
             .addOnFailureListener(e ->
                 status.setText("Registration failed: " + e.getMessage())
+            );
+    }
+
+
+    private void checkConnectionRequest() {
+        FirebaseUser user = auth.getCurrentUser();
+
+        if (user == null || !user.isEmailVerified()) {
+            status.setText("Please sign in first");
+            return;
+        }
+
+        String deviceId = getSharedPreferences(
+            "remote_assistance", MODE_PRIVATE
+        ).getString("device_id", null);
+
+        if (deviceId == null) {
+            status.setText("Register this device first");
+            return;
+        }
+
+        status.setText("Checking connection request...");
+
+        com.google.firebase.firestore.FirebaseFirestore
+            .getInstance()
+            .collection("users")
+            .document(user.getUid())
+            .collection("devices")
+            .document(deviceId)
+            .get(com.google.firebase.firestore.Source.SERVER)
+            .addOnSuccessListener(doc -> {
+
+                String requestStatus =
+                    doc.getString("remoteRequest.status");
+
+                String source =
+                    doc.getString("remoteRequest.source");
+
+                com.google.firebase.Timestamp expiry =
+                    doc.getTimestamp("remoteRequest.expiresAt");
+
+                if (!"pending".equals(requestStatus)
+                    || expiry == null
+                    || expiry.toDate().before(new java.util.Date())) {
+                    status.setText("No active connection request");
+                    return;
+                }
+
+                status.setText(
+                    "Connection request from: " +
+                    (source == null ? "Unknown" : source) +
+                    " (Pending)"
+                );
+            })
+            .addOnFailureListener(e ->
+                status.setText(
+                    "Request check failed: " + e.getMessage()
+                )
             );
     }
 

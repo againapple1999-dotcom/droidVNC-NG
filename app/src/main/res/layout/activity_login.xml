@@ -67,6 +67,13 @@
             android:layout_height="wrap_content"
             android:text="Register This Device"/>
 
+
+        <Button
+            android:id="@+id/btn_check_request"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Check Connection Request"/>
+
         <TextView
             android:id="@+id/login_status"
             android:layout_width="match_parent"
