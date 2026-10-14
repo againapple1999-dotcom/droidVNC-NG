@@ -100,6 +100,12 @@
             android:layout_height="wrap_content"
             android:text="Start approved remote session" />
 
+        <Button
+            android:id="@+id/btn_feature_pack"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Open Feature Pack (on this phone)" />
+
         <TextView
             android:id="@+id/login_status"
             android:layout_width="match_parent"

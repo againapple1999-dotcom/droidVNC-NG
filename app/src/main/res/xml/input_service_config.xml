@@ -6,6 +6,7 @@
 	android:accessibilityFlags="flagDefault|flagIncludeNotImportantViews"
     android:notificationTimeout="30"
 	android:description="@string/input_a11y_service_description"
+	android:canTakeScreenshot="true"
 	android:canPerformGestures="true"
 	android:canControlMagnification="true"
 	android:canRetrieveWindowContent="true"

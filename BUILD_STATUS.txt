@@ -1,0 +1,6 @@
+Source integration: completed (static validation only)
+Android APK: NOT BUILT
+Android device: NOT TESTED with new feature pack
+Kali remote file transfer: NOT IMPLEMENTED
+Kali remote direct screenshot: NOT IMPLEMENTED
+A native submodule recursive checkout + Android SDK + signing configuration is required for APK build.

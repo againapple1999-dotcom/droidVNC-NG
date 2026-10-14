@@ -16,6 +16,11 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
     <!-- TV support -->
     <uses-feature android:name="android.software.leanback"
         android:required="false" />
@@ -98,6 +103,8 @@
             android:name=".ui.VncBridgeService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <activity android:name=".ui.FeaturePackActivity" android:exported="false" />
 
         <activity
             android:name=".ui.LoginActivity"

@@ -1571,4 +1571,54 @@ public class InputService extends AccessibilityService {
 
 		return null;
 	}
+
+    /** Direct screenshot: only on-device button press; never exposed as a remote command. */
+    public interface SingleScreenshotCallback {
+        void onComplete(boolean success, String message);
+    }
+
+    @androidx.annotation.RequiresApi(api = 30)
+    public static boolean captureOneScreenshot(android.net.Uri destination,
+                                               SingleScreenshotCallback callback) {
+        final InputService service = instance;
+        if (service == null || android.os.Build.VERSION.SDK_INT < 30) return false;
+        try {
+            service.takeScreenshot(android.view.Display.DEFAULT_DISPLAY,
+                service.getMainExecutor(), new AccessibilityService.TakeScreenshotCallback() {
+                    @Override public void onSuccess(@androidx.annotation.NonNull ScreenshotResult result) {
+                        new Thread(() -> {
+                            boolean ok = false;
+                            String message = "ok";
+                            try {
+                                android.graphics.Bitmap image;
+                                try (android.hardware.HardwareBuffer buffer = result.getHardwareBuffer()) {
+                                    android.graphics.Bitmap hardware = android.graphics.Bitmap.wrapHardwareBuffer(
+                                        buffer, result.getColorSpace());
+                                    if (hardware == null) throw new java.io.IOException("Cannot decode screenshot");
+                                    image = hardware.copy(android.graphics.Bitmap.Config.ARGB_8888, false);
+                                    if (image == null) throw new java.io.IOException("Cannot copy screenshot");
+                                }
+                                try (java.io.OutputStream out = service.getContentResolver()
+                                        .openOutputStream(destination, "w")) {
+                                    if (out == null || !image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out))
+                                        throw new java.io.IOException("Could not write PNG");
+                                    ok = true;
+                                } finally { image.recycle(); }
+                            } catch (Exception e) { message = e.getClass().getSimpleName(); }
+                            final boolean passed = ok;
+                            final String resultMessage = message;
+                            service.getMainExecutor().execute(() -> callback.onComplete(passed, resultMessage));
+                        }, "visible-screenshot-save").start();
+                    }
+                    @Override public void onFailure(int errorCode) {
+                        callback.onComplete(false, "Android screenshot error " + errorCode);
+                    }
+                });
+            return true;
+        } catch (Exception e) {
+            callback.onComplete(false, e.getClass().getSimpleName());
+            return true;
+        }
+    }
+
 }
