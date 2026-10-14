@@ -280,15 +280,86 @@ public class LoginActivity extends AppCompatActivity {
                     return;
                 }
 
-                status.setText(
-                    "Connection request from: " +
+                String requestId =
+                    doc.getString("remoteRequest.id");
+
+                if (requestId == null) {
+                    status.setText("Invalid connection request");
+                    return;
+                }
+
+                new androidx.appcompat.app.AlertDialog.Builder(
+                    LoginActivity.this
+                )
+                .setTitle("Remote Connection Request")
+                .setMessage(
+                    "Request from: " +
                     (source == null ? "Unknown" : source) +
-                    " (Pending)"
-                );
+                    "\n\nAllow this remote session request?"
+                )
+                .setPositiveButton("ALLOW", (dialog, which) ->
+                    respondToRequest(
+                        doc.getReference(), requestId, "approved"
+                    )
+                )
+                .setNegativeButton("DENY", (dialog, which) ->
+                    respondToRequest(
+                        doc.getReference(), requestId, "denied"
+                    )
+                )
+                .show();
             })
             .addOnFailureListener(e ->
                 status.setText(
                     "Request check failed: " + e.getMessage()
+                )
+            );
+    }
+
+    private void respondToRequest(
+        com.google.firebase.firestore.DocumentReference ref,
+        String requestId,
+        String decision
+    ) {
+        FirebaseUser user = auth.getCurrentUser();
+        if (user == null || !user.isEmailVerified()) {
+            status.setText("Please sign in first");
+            return;
+        }
+
+        status.setText("Sending decision...");
+
+        com.google.firebase.firestore.FirebaseFirestore
+            .getInstance()
+            .runTransaction(transaction -> {
+                com.google.firebase.firestore.DocumentSnapshot doc =
+                    transaction.get(ref);
+
+                String id = doc.getString("remoteRequest.id");
+                String state = doc.getString("remoteRequest.status");
+                com.google.firebase.Timestamp expiry =
+                    doc.getTimestamp("remoteRequest.expiresAt");
+
+                if (!requestId.equals(id)
+                    || !"pending".equals(state)
+                    || expiry == null
+                    || !expiry.toDate().after(new java.util.Date())) {
+                    throw new IllegalStateException(
+                        "Request expired or changed"
+                    );
+                }
+
+                transaction.update(
+                    ref, "remoteRequest.status", decision
+                );
+                return null;
+            })
+            .addOnSuccessListener(result ->
+                status.setText("Request " + decision)
+            )
+            .addOnFailureListener(e ->
+                status.setText(
+                    "Decision failed: " + e.getMessage()
                 )
             );
     }
