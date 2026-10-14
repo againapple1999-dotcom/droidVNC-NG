@@ -40,6 +40,8 @@ public class LoginActivity extends AppCompatActivity {
         loginBtn.setOnClickListener(v -> signIn());
         resetBtn.setOnClickListener(v -> resetPassword());
         signOutBtn.setOnClickListener(v -> signOut());
+        findViewById(R.id.btn_register_device)
+            .setOnClickListener(v -> registerDevice());
 
         updateStatus();
     }
@@ -186,6 +188,49 @@ public class LoginActivity extends AppCompatActivity {
         auth.signOut();
         passwordInput.setText("");
         updateStatus();
+    }
+
+
+    private void registerDevice() {
+        FirebaseUser user = auth.getCurrentUser();
+
+        if (user == null || !user.isEmailVerified()) {
+            status.setText("Please sign in with a verified email first");
+            return;
+        }
+
+        android.content.SharedPreferences prefs =
+            getSharedPreferences("remote_assistance", MODE_PRIVATE);
+
+        String deviceId = prefs.getString("device_id", null);
+
+        if (deviceId == null) {
+            deviceId = java.util.UUID.randomUUID().toString();
+            prefs.edit().putString("device_id", deviceId).apply();
+        }
+
+        java.util.Map<String, Object> data = new java.util.HashMap<>();
+        data.put("name",
+            android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL);
+        data.put("platform", "android");
+        data.put("status", "registered");
+        data.put("updatedAt",
+            com.google.firebase.firestore.FieldValue.serverTimestamp());
+
+        status.setText("Registering device...");
+
+        com.google.firebase.firestore.FirebaseFirestore.getInstance()
+            .collection("users")
+            .document(user.getUid())
+            .collection("devices")
+            .document(deviceId)
+            .set(data)
+            .addOnSuccessListener(v ->
+                status.setText("Device registered successfully")
+            )
+            .addOnFailureListener(e ->
+                status.setText("Registration failed: " + e.getMessage())
+            );
     }
 
     private void updateStatus() {
