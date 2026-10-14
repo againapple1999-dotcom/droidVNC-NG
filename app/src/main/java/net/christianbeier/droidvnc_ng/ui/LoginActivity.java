@@ -1,156 +1,209 @@
 package net.christianbeier.droidvnc_ng.ui;
 
 import android.os.Bundle;
-import android.os.CancellationSignal;
+import android.util.Patterns;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.content.ContextCompat;
-import androidx.credentials.Credential;
-import androidx.credentials.CredentialManager;
-import androidx.credentials.CredentialManagerCallback;
-import androidx.credentials.CustomCredential;
-import androidx.credentials.GetCredentialRequest;
-import androidx.credentials.GetCredentialResponse;
-import androidx.credentials.exceptions.GetCredentialException;
 
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption;
-import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.auth.GoogleAuthProvider;
 
 import net.christianbeier.droidvnc_ng.R;
 
 public class LoginActivity extends AppCompatActivity {
 
-    private Button signInButton;
-    private TextView loginStatus;
     private FirebaseAuth auth;
-    private CredentialManager credentialManager;
+    private EditText emailInput, passwordInput;
+    private TextView status;
+    private Button loginBtn, createBtn, resetBtn, signOutBtn;
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+    protected void onCreate(Bundle state) {
+        super.onCreate(state);
         setContentView(R.layout.activity_login);
 
-        signInButton = findViewById(R.id.btn_sign_in);
-        loginStatus = findViewById(R.id.login_status);
-
         auth = FirebaseAuth.getInstance();
-        credentialManager = CredentialManager.create(this);
+
+        emailInput = findViewById(R.id.email_input);
+        passwordInput = findViewById(R.id.password_input);
+        status = findViewById(R.id.login_status);
+
+        loginBtn = findViewById(R.id.btn_email_login);
+        createBtn = findViewById(R.id.btn_create_account);
+        resetBtn = findViewById(R.id.btn_reset_password);
+        signOutBtn = findViewById(R.id.btn_sign_out);
+
+        createBtn.setOnClickListener(v -> createAccount());
+        loginBtn.setOnClickListener(v -> signIn());
+        resetBtn.setOnClickListener(v -> resetPassword());
+        signOutBtn.setOnClickListener(v -> signOut());
 
         updateStatus();
+    }
 
-        signInButton.setOnClickListener(v -> startGoogleSignIn());
+    private String email() {
+        return emailInput.getText().toString().trim();
+    }
+
+    private String password() {
+        return passwordInput.getText().toString();
+    }
+
+    private boolean validEmail() {
+        if (!Patterns.EMAIL_ADDRESS.matcher(email()).matches()) {
+            status.setText("Enter a valid email address");
+            return false;
+        }
+        return true;
+    }
+
+    private boolean validPassword() {
+        if (password().length() < 6) {
+            status.setText("Password must have at least 6 characters");
+            return false;
+        }
+        return true;
+    }
+
+    private void setBusy(boolean busy) {
+        loginBtn.setEnabled(!busy);
+        createBtn.setEnabled(!busy);
+        resetBtn.setEnabled(!busy);
+        signOutBtn.setEnabled(!busy);
+    }
+
+    private void showError(String action, Exception e) {
+        String message = e == null ? "Unknown error" :
+            e.getLocalizedMessage();
+        status.setText(action + " failed: " + message);
+        setBusy(false);
+    }
+
+    private void createAccount() {
+        if (!validEmail() || !validPassword()) return;
+
+        setBusy(true);
+        status.setText("Creating account...");
+
+        auth.createUserWithEmailAndPassword(
+            email(), password()
+        ).addOnCompleteListener(this, task -> {
+            if (!task.isSuccessful()) {
+                showError("Create account", task.getException());
+                return;
+            }
+
+            FirebaseUser user = auth.getCurrentUser();
+            if (user != null) {
+                sendVerification(user);
+            } else {
+                auth.signOut();
+                status.setText("Account created. Please sign in.");
+                setBusy(false);
+            }
+        });
+    }
+
+    private void sendVerification(FirebaseUser user) {
+        status.setText("Sending verification email...");
+
+        user.sendEmailVerification()
+            .addOnCompleteListener(this, task -> {
+                auth.signOut();
+                passwordInput.setText("");
+                setBusy(false);
+
+                if (task.isSuccessful()) {
+                    status.setText(
+                        "Check your email. Verify your account, then sign in."
+                    );
+                } else {
+                    status.setText(
+                        "Verification email could not be sent. " +
+                        "Try signing in again."
+                    );
+                }
+            });
+    }
+
+    private void signIn() {
+        if (!validEmail() || !validPassword()) return;
+
+        setBusy(true);
+        status.setText("Signing in...");
+
+        auth.signInWithEmailAndPassword(
+            email(), password()
+        ).addOnCompleteListener(this, task -> {
+            if (!task.isSuccessful()) {
+                showError("Sign in", task.getException());
+                return;
+            }
+
+            FirebaseUser user = auth.getCurrentUser();
+
+            if (user == null) {
+                status.setText("Unable to load account");
+                setBusy(false);
+                return;
+            }
+
+            if (!user.isEmailVerified()) {
+                sendVerification(user);
+                return;
+            }
+
+            setBusy(false);
+            passwordInput.setText("");
+            updateStatus();
+        });
+    }
+
+    private void resetPassword() {
+        if (!validEmail()) return;
+
+        setBusy(true);
+        status.setText("Sending password reset email...");
+
+        auth.sendPasswordResetEmail(email())
+            .addOnCompleteListener(this, task -> {
+                setBusy(false);
+
+                if (task.isSuccessful()) {
+                    status.setText(
+                        "If the email is registered, check your inbox."
+                    );
+                } else {
+                    showError("Password reset", task.getException());
+                }
+            });
+    }
+
+    private void signOut() {
+        auth.signOut();
+        passwordInput.setText("");
+        updateStatus();
     }
 
     private void updateStatus() {
         FirebaseUser user = auth.getCurrentUser();
 
         if (user == null) {
-            loginStatus.setText("Not signed in");
+            status.setText("Not signed in");
+        } else if (user.isEmailVerified()) {
+            status.setText("Signed in: " + user.getEmail());
         } else {
-            loginStatus.setText("Signed in: " + user.getEmail());
-        }
-    }
-
-    private void startGoogleSignIn() {
-        loginStatus.setText("Opening Google Sign-In...");
-        signInButton.setEnabled(false);
-
-        GetGoogleIdOption option =
-            new GetGoogleIdOption.Builder()
-                .setServerClientId(
-                    getString(R.string.default_web_client_id)
-                )
-                .setFilterByAuthorizedAccounts(false)
-                .build();
-
-        GetCredentialRequest request =
-            new GetCredentialRequest.Builder()
-                .addCredentialOption(option)
-                .build();
-
-        credentialManager.getCredentialAsync(
-            this,
-            request,
-            new CancellationSignal(),
-            ContextCompat.getMainExecutor(this),
-            new CredentialManagerCallback<
-                GetCredentialResponse,
-                GetCredentialException>() {
-
-                @Override
-                public void onResult(GetCredentialResponse result) {
-                    handleCredential(result.getCredential());
-                }
-
-                @Override
-                public void onError(@NonNull GetCredentialException e) {
-                    loginStatus.setText(
-                        "Google Sign-In Error: " +
-                        e.getClass().getSimpleName()
-                    );
-                    android.util.Log.e(
-                        "RemoteAuth",
-                        "Credential request failed: " + e.getType(),
-                        e
-                    );
-                    signInButton.setEnabled(true);
-                }
-            }
-        );
-    }
-
-    private void handleCredential(Credential credential) {
-        if (!(credential instanceof CustomCredential)) {
-            loginStatus.setText("Unsupported credential");
-            signInButton.setEnabled(true);
-            return;
-        }
-
-        CustomCredential custom = (CustomCredential) credential;
-
-        if (!GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-                .equals(custom.getType())) {
-            loginStatus.setText("Invalid credential type");
-            signInButton.setEnabled(true);
-            return;
-        }
-
-        try {
-            GoogleIdTokenCredential googleCredential =
-                GoogleIdTokenCredential.createFrom(custom.getData());
-
-            auth.signInWithCredential(
-                GoogleAuthProvider.getCredential(
-                    googleCredential.getIdToken(), null
-                )
-            ).addOnCompleteListener(this, task -> {
-                signInButton.setEnabled(true);
-
-                if (task.isSuccessful()) {
-                    updateStatus();
-                } else {
-                    loginStatus.setText("Firebase authentication failed");
-                }
-            });
-
-        } catch (Exception e) {
-            loginStatus.setText("Unable to read Google credential");
-            signInButton.setEnabled(true);
+            auth.signOut();
+            status.setText("Email not verified. Please sign in again.");
         }
     }
 
     @Override
     protected void onStart() {
         super.onStart();
-
-        if (auth != null) {
-            updateStatus();
-        }
+        if (auth != null) updateStatus();
     }
 }
