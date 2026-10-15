@@ -24,6 +24,25 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
 
+      # Avoid intermittent corrupted Google NDK downloads causing ZipException.
+      - name: Install Android NDK with clean retries
+        shell: bash
+        run: |
+          set -e
+          for attempt in 1 2 3; do
+            echo "NDK installation attempt $attempt/3"
+            if sdkmanager --install "ndk;28.2.13676358"; then
+              echo "Android NDK installed"
+              break
+            fi
+            rm -rf "$ANDROID_HOME/ndk/28.2.13676358"
+            if [ "$attempt" = 3 ]; then
+              echo "::error::NDK download failed after 3 tries; check SDK CDN availability"
+              exit 1
+            fi
+            sleep 10
+          done
+
       # Android's default debug signing configuration reads ~/.android/debug.keystore.
       # Without this secret, ephemeral runners create a DIFFERENT key every build.
       - name: Restore stable signing key
