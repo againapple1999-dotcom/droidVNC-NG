@@ -294,7 +294,7 @@ public final class FeatureDeskActivity extends AppCompatActivity {
             try {
                 switch(op) {
                     case "status": sendResult(id,true,deviceInfo()); break;
-                    case "list": sendResult(id,true,fileList());break;
+                    case "list": sendResult(id,true,remoteFileList());break;
                     case "download": sendChosenFile(id,args.optString("name"));break;
                     case "rename": rename(id,args);break;
                     case "delete": delete(id,args);break;
@@ -360,7 +360,7 @@ public final class FeatureDeskActivity extends AppCompatActivity {
         }
         return null;
     }
-    private JSONObject fileList() throws Exception {
+    private JSONObject remoteFileList() throws Exception {
         Uri folder=tree();if(folder==null) throw new IllegalStateException("Choose shared folder first");
         Uri children=DocumentsContract.buildChildDocumentsUriUsingTree(folder,DocumentsContract.getTreeDocumentId(folder));
         JSONArray items=new JSONArray();
