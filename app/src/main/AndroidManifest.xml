@@ -105,6 +105,7 @@
             android:foregroundServiceType="connectedDevice" />
 
         <activity android:name=".ui.FeaturePackActivity" android:exported="false" />
+        <activity android:name=".ui.DeviceMonitorActivity" android:exported="false" />
 
         <activity
             android:name=".ui.LoginActivity"

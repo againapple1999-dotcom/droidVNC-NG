@@ -62,6 +62,8 @@ public class LoginActivity extends AppCompatActivity {
             .setOnClickListener(v -> endRequest());
         findViewById(R.id.btn_feature_pack).setOnClickListener(v ->
             startActivity(new android.content.Intent(this, FeaturePackActivity.class)));
+        findViewById(R.id.btn_device_monitor).setOnClickListener(v ->
+            startActivity(new android.content.Intent(this, DeviceMonitorActivity.class)));
         findViewById(R.id.btn_start_remote_session)
             .setOnClickListener(v -> startRemoteSession());
 

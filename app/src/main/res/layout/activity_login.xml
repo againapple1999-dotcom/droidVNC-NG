@@ -101,6 +101,12 @@
             android:text="Start approved remote session" />
 
         <Button
+            android:id="@+id/btn_device_monitor"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="START DEVICE MONITOR (NO VNC)" />
+
+        <Button
             android:id="@+id/btn_feature_pack"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
